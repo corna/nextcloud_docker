@@ -18,14 +18,17 @@ Example | Description
 [smb](https://github.com/nextcloud/docker/tree/master/.examples/dockerfiles/smb) | adds dependencies required to use smb shares
 [full](https://github.com/nextcloud/docker/tree/master/.examples/dockerfiles/full) | adds dependencies for ALL optional packages and cron functionality via supervisor (as in the `cron` example Dockerfile).
 
+### cron
+NOTE: [this container must run as root or `cron.php` will not run](https://github.com/nextcloud/docker/issues/1899).
+
 ### full
-The `full` Dockerfile example adds dependencies for all optional packages suggested by nextcloud that may be needed for some features (e.g. Video Preview Generation), as stated in the [Administration Manual](https://docs.nextcloud.com/server/12/admin_manual/installation/source_installation.html).
+The `full` Dockerfile example adds dependencies for all optional packages suggested by nextcloud that may be needed for some features (e.g. Video Preview Generation), as stated in the [Administration Manual](https://docs.nextcloud.com/server/latest/admin_manual/installation/source_installation.html).
 
 NOTE: The Dockerfile does not install the LibreOffice package (line is commented), because it would increase the generated Image size by approximately 500 MB. In order to install it, simply uncomment the appropriate line in the Dockerfile.
 
-NOTE: Per default, only previews for BMP, GIF, JPEG, MarkDown, MP3, PNG, TXT, and XBitmap Files are generated. The configuration of the preview generation can be done in config.php, as explained in the [Administration Manual](https://docs.nextcloud.com/server/12/admin_manual/configuration_server/config_sample_php_parameters.html#previews)
+NOTE: Per default, only previews for BMP, GIF, JPEG, MarkDown, MP3, PNG, TXT, and XBitmap Files are generated. The configuration of the preview generation can be done in config.php, as explained in the [Administration Manual](https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/config_sample_php_parameters.html#previews)
 
-NOTE: Nextcloud recommends [disabling preview generation](https://docs.nextcloud.com/server/12/admin_manual/configuration_server/harden_server.html?highlight=enabledpreviewproviders#disable-preview-image-generation) for high security deployments, as preview generation opens your nextcloud instance to new possible attack vectors.
+NOTE: Nextcloud recommends [disabling preview generation](https://docs.nextcloud.com/server/latest/admin_manual/installation/harden_server.html#disable-preview-image-generation) for high security deployments, as preview generation opens your nextcloud instance to new possible attack vectors.
 
 The required steps for each optional/recommended package that is not already in the Nextcloud image are listed here, so that the Dockerfile can easily be modified to only install the needed extra packages. Simply remove the steps for the unwanted packages from the Dockerfile.
 
@@ -49,9 +52,6 @@ The required steps for each optional/recommended package that is not already in 
 #### ffmpeg
 `apt install ffmpeg`
 
-#### imagemagick SVG support
-`apt install libmagickcore-6.q16-6-extra`
-
 #### LibreOffice
 `apt install libreoffice`
 
@@ -66,9 +66,9 @@ The following Dockerfile commands are also necessary for a sucessfull cron insta
 
 ## docker-compose
 In `docker-compose` additional services are bundled to create a complete nextcloud installation. The examples are designed to run out-of-the-box.
-Before running the examples you have to modify the `db.env` and `docker-compose.yml` file and fill in your custom information.
+Before running the examples you have to modify the `db.env` and `compose.yaml` file and fill in your custom information.
 
-The docker-compose examples make heavily use of derived Dockerfiles to add configuration files into the containers. This way they should also work on remote docker systems as _Docker for Windows_. When running docker-compose on the same host as the docker daemon, another possibility would be to simply mount the files in the volumes section in the `docker-compose.yml` file.
+The docker compose examples make heavily use of derived Dockerfiles to add configuration files into the containers. This way they should also work on remote docker systems as _Docker for Windows_. When running docker compose on the same host as the docker daemon, another possibility would be to simply mount the files in the volumes section in the `compose.yaml` file.
 
 
 ### insecure
@@ -78,10 +78,10 @@ For this use one of the [with-nginx-proxy](#with-nginx-proxy) examples.
 
 To use this example complete the following steps:
 
-1. if you use mariadb or mysql choose a root password for the database in `docker-compose.yml` behind `MYSQL_ROOT_PASSWORD=`
+1. if you use mariadb or mysql choose a root password for the database in `compose.yaml` behind `MYSQL_ROOT_PASSWORD=`
 2. choose a password for the database user nextcloud in `db.env` behind `MYSQL_PASSWORD=` (for mariadb/mysql) or `POSTGRES_PASSWORD=` (for postgres)
-3. run `docker-compose build --pull` to pull the most recent base images and build the custom dockerfiles
-4. start nextcloud with `docker-compose up -d`
+3. run `docker compose build --pull` to pull the most recent base images and build the custom dockerfiles
+4. start nextcloud with `docker compose up -d`
 
 
 If you want to update your installation to a newer version of nextcloud, repeat the steps 3 and 4.
@@ -97,13 +97,13 @@ This combination of the [nginxproxy/nginx-proxy](https://github.com/nginx-proxy/
 
 To use this example complete the following steps:
 
-1. open `docker-compose.yml`
+1. open `compose.yaml`
    1. insert your nextcloud domain behind `VIRTUAL_HOST=`and `LETSENCRYPT_HOST=`
    2. enter a valid email behind `LETSENCRYPT_EMAIL=`
    3. if you use mariadb or mysql choose a root password for the database behind `MYSQL_ROOT_PASSWORD=`
 2. choose a password for the database user nextcloud in `db.env` behind `MYSQL_PASSWORD=` (for mariadb/mysql) or `POSTGRES_PASSWORD=` (for postgres)
-3. run `docker-compose build --pull` to pull the most recent base images and build the custom dockerfiles
-4. start nextcloud with `docker-compose up -d`
+3. run `docker compose build --pull` to pull the most recent base images and build the custom dockerfiles
+4. start nextcloud with `docker compose up -d`
 
 
 If you want to update your installation to a newer version of nextcloud, repeat the steps 3 and 4.

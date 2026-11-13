@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+declare -A alpine_version=(
+	[default]='3.24'
+)
+
+declare -A debian_version=(
+	[default]='trixie'
+)
+
 declare -A php_version=(
-	[default]='8.0'
+	[32]='8.3'
+	[33]='8.4'
+	[default]='8.5'
+)
+
+declare -A ftp_options=(
+	[32]='--with-openssl-dir=/usr'
+	[default]='--with-ftp-ssl'
 )
 
 declare -A cmd=(
@@ -18,7 +33,7 @@ declare -A base=(
 )
 
 declare -A extras=(
-	[apache]='\nRUN a2enmod headers rewrite remoteip ;\\\n    {\\\n     echo RemoteIPHeader X-Real-IP ;\\\n     echo RemoteIPTrustedProxy 10.0.0.0/8 ;\\\n     echo RemoteIPTrustedProxy 172.16.0.0/12 ;\\\n     echo RemoteIPTrustedProxy 192.168.0.0/16 ;\\\n    } > /etc/apache2/conf-available/remoteip.conf;\\\n    a2enconf remoteip'
+	[apache]='\nRUN a2enmod headers rewrite remoteip ; \\\n    { \\\n     echo '\''RemoteIPHeader X-Real-IP'\''; \\\n     echo '\''RemoteIPInternalProxy 10.0.0.0/8'\''; \\\n     echo '\''RemoteIPInternalProxy 172.16.0.0/12'\''; \\\n     echo '\''RemoteIPInternalProxy 192.168.0.0/16'\''; \\\n    } > /etc/apache2/conf-available/remoteip.conf; \\\n    a2enconf remoteip\n\n# set apache config LimitRequestBody\nENV APACHE_BODY_LIMIT 1073741824\nRUN { \\\n     echo '\''LimitRequestBody ${APACHE_BODY_LIMIT}'\''; \\\n    } > /etc/apache2/conf-available/apache-limits.conf; \\\n    a2enconf apache-limits'
 	[fpm]=''
 	[fpm-alpine]=''
 )
@@ -32,6 +47,24 @@ apcu_version="$(
 		| cut -d/ -f3 \
 		| grep -viE -- 'rc|b' \
 		| sed -E 's/^v//' \
+		| sort -V \
+		| tail -1
+)"
+
+igbinary_version="$(
+	git ls-remote --tags https://github.com/igbinary/igbinary.git \
+		| cut -d/ -f3 \
+		| grep -viE '[a-z]' \
+		| tr -d '^{}' \
+		| sort -V \
+		| tail -1
+)"
+
+imagick_version="$(
+	git ls-remote --tags https://github.com/imagick/imagick.git \
+		| cut -d/ -f3 \
+		| grep -viE '[a-z]' \
+		| tr -d '^{}' \
 		| sort -V \
 		| tail -1
 )"
@@ -54,20 +87,14 @@ redis_version="$(
 		| tail -1
 )"
 
-imagick_version="$(
-	git ls-remote --tags https://github.com/mkoppanen/imagick.git \
-		| cut -d/ -f3 \
-		| grep -viE '[a-z]' \
-		| tr -d '^{}' \
-		| sort -V \
-		| tail -1
-)"
-
 declare -A pecl_versions=(
 	[APCu]="$apcu_version"
+	# https://github.com/nextcloud/docker/issues/2578
+	#[igbinary]="$igbinary_version"
+	[igbinary]="3.2.17RC1"
+	[imagick]="$imagick_version"
 	[memcached]="$memcached_version"
 	[redis]="$redis_version"
-	[imagick]="$imagick_version"
 )
 
 variants=(
@@ -76,7 +103,7 @@ variants=(
 	fpm-alpine
 )
 
-min_version='22'
+min_version='32'
 
 # version_greater_or_equal A B returns whether A >= B
 function version_greater_or_equal() {
@@ -85,8 +112,13 @@ function version_greater_or_equal() {
 
 function create_variant() {
 	dir="$1/$variant"
+	alpineVersion=${alpine_version[$version]-${alpine_version[default]}}
+	debianVersion=${debian_version[$version]-${debian_version[default]}}
+	ftp_options=${ftp_options[$version]-${ftp_options[default]}}
 	phpVersion=${php_version[$version]-${php_version[default]}}
 	crontabInt=${crontab_int[$version]-${crontab_int[default]}}
+	url="https://github.com/nextcloud-releases/server/releases/download/v$fullversion/nextcloud-$fullversion.tar.bz2"
+	ascUrl="https://github.com/nextcloud-releases/server/releases/download/v$fullversion/nextcloud-$fullversion.tar.bz2.asc"
 
 	# Create the version+variant directory with a Dockerfile.
 	mkdir -p "$dir"
@@ -99,19 +131,22 @@ function create_variant() {
 
 	# Replace the variables.
 	sed -ri -e '
+		s/%%ALPINE_VERSION%%/'"$alpineVersion"'/g;
+		s/%%DEBIAN_VERSION%%/'"$debianVersion"'/g;
 		s/%%PHP_VERSION%%/'"$phpVersion"'/g;
 		s/%%VARIANT%%/'"$variant"'/g;
 		s/%%VERSION%%/'"$fullversion"'/g;
-		s/%%BASE_DOWNLOAD_URL%%/'"$2"'/g;
+		s/%%DOWNLOAD_URL%%/'"$(sed -e 's/[\/&]/\\&/g' <<< "$url")"'/g;
+		s/%%DOWNLOAD_URL_ASC%%/'"$(sed -e 's/[\/&]/\\&/g' <<< "$ascUrl")"'/g;
 		s/%%CMD%%/'"${cmd[$variant]}"'/g;
 		s|%%VARIANT_EXTRAS%%|'"${extras[$variant]}"'|g;
 		s/%%APCU_VERSION%%/'"${pecl_versions[APCu]}"'/g;
+		s|%%FTP_OPTIONS%%|'"$ftp_options"'|g;
+		s/%%IGBINARY_VERSION%%/'"${pecl_versions[igbinary]}"'/g;
+		s/%%IMAGICK_VERSION%%/'"${pecl_versions[imagick]}"'/g;
 		s/%%MEMCACHED_VERSION%%/'"${pecl_versions[memcached]}"'/g;
 		s/%%REDIS_VERSION%%/'"${pecl_versions[redis]}"'/g;
-		s/%%IMAGICK_VERSION%%/'"${pecl_versions[imagick]}"'/g;
 		s/%%CRONTAB_INT%%/'"$crontabInt"'/g;
-		\@docker-php-ext-configure gmp --with-gmp@d;
-		\@/usr/include/gmp.h@d;
 	' "$dir/Dockerfile"
 
 	# Copy the shell scripts
@@ -129,6 +164,16 @@ function create_variant() {
 	if [ "$variant" != "apache" ]; then
 		rm "$dir/config/apache-pretty-urls.config.php"
 	fi
+
+	# Add variant to versions.json
+	[ "${base[$variant]}" == "alpine" ] && baseVersion="$alpineVersion" || baseVersion="$debianVersion"
+	versionVariantsJson="$(jq -e \
+		--arg version "$version" --arg variant "$variant" --arg base "${base[$variant]}" --arg baseVersion "$baseVersion" --arg phpVersion "$phpVersion" \
+		'.[$version].variants[$variant] = {"variant": $variant, "base": $base, "baseVersion": $baseVersion, "phpVersion": $phpVersion}' versions.json)"
+	versionJson="$(jq -e \
+		--arg version "$version" --arg fullversion "$fullversion" --arg url "$url" --arg ascUrl "$ascUrl" --argjson variants "$versionVariantsJson" \
+		'.[$version] = {"branch": $version, "version": $fullversion, "url": $url, "ascUrl": $ascUrl, "variants": $variants[$version].variants}' versions.json)"
+	printf '%s\n' "$versionJson" > versions.json
 }
 
 curl -fsSL 'https://download.nextcloud.com/server/releases/' |tac|tac| \
@@ -139,19 +184,20 @@ curl -fsSL 'https://download.nextcloud.com/server/releases/' |tac|tac| \
 
 find . -maxdepth 1 -type d -regextype sed -regex '\./[[:digit:]]\+\.[[:digit:]]\+\(-rc\|-beta\|-alpha\)\?' -exec rm -r '{}' \;
 
+printf '%s' "{}" > versions.json
+
 fullversions=( $( curl -fsSL 'https://download.nextcloud.com/server/releases/' |tac|tac| \
 	grep -oE 'nextcloud-[[:digit:]]+(\.[[:digit:]]+){2}' | \
 	grep -oE '[[:digit:]]+(\.[[:digit:]]+){2}' | \
 	sort -urV ) )
 versions=( $( printf '%s\n' "${fullversions[@]}" | cut -d. -f1 | sort -urV ) )
+
 for version in "${versions[@]}"; do
 	fullversion="$( printf '%s\n' "${fullversions[@]}" | grep -E "^$version" | head -1 )"
 
 	if version_greater_or_equal "$version" "$min_version"; then
-
 		for variant in "${variants[@]}"; do
-
-			create_variant "$version" "https:\/\/download.nextcloud.com\/server\/releases"
+			create_variant "$version"
 		done
 	fi
 done
